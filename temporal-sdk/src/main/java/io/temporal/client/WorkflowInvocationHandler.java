@@ -51,6 +51,7 @@ class WorkflowInvocationHandler implements InvocationHandler {
     START,
     EXECUTE,
     SIGNAL_WITH_START,
+    SIGNAL_WITH_START2,
     UPDATE_WITH_START
   }
 
@@ -87,6 +88,9 @@ class WorkflowInvocationHandler implements InvocationHandler {
     } else if (type == InvocationType.SIGNAL_WITH_START) {
       SignalWithStartBatchRequest batch = (SignalWithStartBatchRequest) value;
       invocationContext.set(new SignalWithStartWorkflowInvocationHandler(batch));
+    } else if (type == InvocationType.SIGNAL_WITH_START2) {
+      SignalWithStartWorkflowOperation operation = (SignalWithStartWorkflowOperation) value;
+      invocationContext.set(new SignalWithStartInvocationHandler(operation));
     } else if (type == InvocationType.UPDATE_WITH_START) {
       WorkflowStartOperationUpdate operation = (WorkflowStartOperationUpdate) value;
       invocationContext.set(new UpdateWithStartInvocationHandler(operation));
@@ -453,6 +457,62 @@ class WorkflowInvocationHandler implements InvocationHandler {
       }
 
       throw new IllegalArgumentException("UpdateWithStartInvocationHandler called too many times");
+    }
+
+    @Override
+    public <R> R getResult(Class<R> resultClass) {
+      throw new IllegalStateException("No result is expected");
+    }
+  }
+
+  private static class SignalWithStartInvocationHandler implements SpecificInvocationHandler {
+
+    private int step;
+
+    private final SignalWithStartWorkflowOperation operation;
+
+    public SignalWithStartInvocationHandler(SignalWithStartWorkflowOperation operation) {
+      this.operation = operation;
+    }
+
+    @Override
+    public InvocationType getInvocationType() {
+      return InvocationType.SIGNAL_WITH_START2;
+    }
+
+    @Override
+    public void invoke(
+        POJOWorkflowInterfaceMetadata workflowMetadata,
+        WorkflowStub untyped,
+        Method method,
+        Object[] args) {
+
+      step += 1;
+      POJOWorkflowMethodMetadata methodMetadata = workflowMetadata.getMethodMetadata(method);
+
+      // first call
+      if (step == 1) {
+        SignalMethod signalMethod = method.getAnnotation(SignalMethod.class);
+        if (signalMethod == null) {
+          throw new IllegalArgumentException(
+              "Method '" + method.getName() + "' is not a SignalMethod");
+        }
+        this.operation.prepareSignal(untyped, methodMetadata.getName(), args);
+        return;
+      }
+
+      // second call
+      if (step == 2) {
+        WorkflowMethod workflowMethod = method.getAnnotation(WorkflowMethod.class);
+        if (workflowMethod == null) {
+          throw new IllegalArgumentException(
+              "Method '" + method.getName() + "' is not a WorkflowMethod");
+        }
+        this.operation.prepareStart(untyped, args);
+        return;
+      }
+
+      throw new IllegalArgumentException("SignalWithStartInvocationHandler called too many times");
     }
 
     @Override
