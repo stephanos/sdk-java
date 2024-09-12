@@ -100,39 +100,36 @@ public class SignalTest {
         SDKTestOptions.newWorkflowOptionsWithTimeouts(testWorkflowRule.getTaskQueue()).toBuilder()
             .setWorkflowId(workflowId)
             .build();
-    QueryableWorkflow client = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
 
     // SignalWithStart starts a workflow and delivers the signal to it.
-    BatchRequest batch = workflowClient.newSignalWithStartRequest();
-    batch.add(client::mySignal, "Hello ");
-    batch.add(client::execute);
-    WorkflowExecution execution = workflowClient.signalWithStart(batch);
+    QueryableWorkflow wf1 = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
+    SignalWithStartWorkflowOperation signalOp =
+        SignalWithStartWorkflowOperation.newBuilder(wf1::mySignal, "Hello ").build();
+    WorkflowExecution execution = WorkflowClient.startWithOperation(wf1::execute, signalOp);
     testWorkflowRule.sleep(Duration.ofSeconds(1));
 
     // Test client created using WorkflowExecution
-    QueryableWorkflow client2 = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
+    QueryableWorkflow wf2 = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
     // SignalWithStart delivers the signal to the already running workflow.
-    BatchRequest batch2 = workflowClient.newSignalWithStartRequest();
-    batch2.add(client2::mySignal, "World!");
-    batch2.add(client2::execute);
-    WorkflowExecution execution2 = workflowClient.signalWithStart(batch2);
+    SignalWithStartWorkflowOperation signalOp2 =
+        SignalWithStartWorkflowOperation.newBuilder(wf2::mySignal, "World!").build();
+    WorkflowExecution execution2 = WorkflowClient.startWithOperation(wf2::execute, signalOp2);
     assertEquals(execution, execution2);
 
     testWorkflowRule.sleep(Duration.ofMillis(500));
-    assertEquals("World!", client2.getState());
+    assertEquals("World!", wf2.getState());
     assertEquals(
         "Hello World!",
         workflowClient.newUntypedWorkflowStub(execution, Optional.empty()).getResult(String.class));
 
     // Check if that it starts closed workflow (AllowDuplicate is default IdReusePolicy)
-    QueryableWorkflow client3 = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
-    BatchRequest batch3 = workflowClient.newSignalWithStartRequest();
-    batch3.add(client3::mySignal, "Hello ");
-    batch3.add(client3::execute);
-    WorkflowExecution execution3 = workflowClient.signalWithStart(batch3);
+    QueryableWorkflow wf3 = workflowClient.newWorkflowStub(QueryableWorkflow.class, options);
+    SignalWithStartWorkflowOperation signalOp3 =
+        SignalWithStartWorkflowOperation.newBuilder(wf3::mySignal, "Hello ").build();
+    WorkflowExecution execution3 = WorkflowClient.startWithOperation(wf3::execute, signalOp3);
     assertEquals(execution.getWorkflowId(), execution3.getWorkflowId());
-    client3.mySignal("World!");
-    WorkflowStub untyped = WorkflowStub.fromTyped(client3);
+    wf3.mySignal("World!");
+    WorkflowStub untyped = WorkflowStub.fromTyped(wf3);
     String result = untyped.getResult(String.class);
     assertEquals("Hello World!", result);
 
